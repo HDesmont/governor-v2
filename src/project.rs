@@ -95,11 +95,20 @@ pub fn discover_in_roots_with_threads(roots: &[PathBuf], threads: usize) -> Vec<
     // deterministic even though the scan itself is concurrent.
     let hits = pool::parallel_map(roots, threads, |root| scan_root(root));
 
+    // Roots may reach the same directory through different spellings
+    // (`.` and `../work` can both resolve to `C:\work`), so de-duplicate by
+    // canonical path: raw string equality would keep both `C:\work\x` and
+    // `C:\work\..\work\x`. Earlier roots win, so the cleanest spelling of a
+    // project path is the one that survives.
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut projects: Vec<Project> = hits
         .into_iter()
         .flatten()
-        .filter(|project| seen.insert(project.root.clone()))
+        .filter(|project| {
+            seen.insert(
+                std::fs::canonicalize(&project.root).unwrap_or_else(|_| project.root.clone()),
+            )
+        })
         .collect();
 
     // Sort by name for stable output.
@@ -157,26 +166,49 @@ pub fn find_project(name: &str) -> Result<Project, ProjectError> {
         .ok_or_else(|| ProjectError::ProjectNotFound(name.to_string()))
 }
 
+/// Build a project handle for a directory containing a `STATE.md` marker.
+///
+/// Returns `None` when the directory has no marker. The directory does not
+/// need to be discoverable through the configured workspace roots — this is
+/// how governor commands keep working inside a checkout that lives outside
+/// every configured root.
+pub fn project_from_dir(dir: &Path) -> Option<Project> {
+    let state_file = dir.join("STATE.md");
+    if !state_file.is_file() {
+        return None;
+    }
+    let impl_file = dir.join("IMPLEMENTATION.md");
+    Some(Project {
+        name: dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        root: dir.to_path_buf(),
+        state_file,
+        implementation_file: impl_file.is_file().then_some(impl_file),
+    })
+}
+
+/// The Governor project in the current working directory, if any.
+pub fn project_in_current_dir() -> Option<Project> {
+    project_from_dir(&std::env::current_dir().ok()?)
+}
+
 /// Resolve a project: by name if provided, otherwise by current directory.
 pub fn resolve_project(name: Option<&str>) -> Result<Project, ProjectError> {
     match name {
-        Some(n) => find_project(n),
+        Some(n) => find_project(n).or_else(|e| {
+            // The named project may be the current directory itself, hidden
+            // from workspace-root discovery; match it by name.
+            match project_in_current_dir() {
+                Some(p) if p.name.eq_ignore_ascii_case(n) => Ok(p),
+                _ => Err(e),
+            }
+        }),
         None => {
             // Try current directory first.
-            let cwd = std::env::current_dir()?;
-            let state = cwd.join("STATE.md");
-            if state.is_file() {
-                let impl_file = cwd.join("IMPLEMENTATION.md");
-                let name = cwd
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                return Ok(Project {
-                    name,
-                    root: cwd,
-                    state_file: state,
-                    implementation_file: impl_file.is_file().then_some(impl_file),
-                });
+            if let Some(project) = project_in_current_dir() {
+                return Ok(project);
             }
             // Pick the first discovered project, or error if none.
             discover_projects()?
@@ -371,5 +403,55 @@ mod tests {
             10,
             "each root must contribute exactly one hit"
         );
+    }
+
+    #[test]
+    fn equivalent_root_spellings_yield_one_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = make_root(tmp.path(), "ws", &["solo"]);
+
+        // `.` and `..`-based spellings that resolve to the same directory
+        // must not duplicate the projects found through them.
+        let dotted = root.join(".");
+        let upward = root.join("..").join("ws");
+        let projects = discover_in_roots_with_threads(&[dotted, upward], 2);
+
+        assert_eq!(projects.len(), 1, "duplicates: {:?}", names_of(&projects));
+        assert_eq!(projects[0].name, "solo");
+    }
+
+    #[test]
+    fn project_from_dir_matches_marker_presence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let with_impl = make_project(tmp.path(), "full", true);
+        let without_impl = make_project(tmp.path(), "bare", false);
+        let empty = tmp.path().join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+
+        let full = project_from_dir(&with_impl).expect("STATE.md present");
+        assert_eq!(full.name, "full");
+        assert_eq!(full.root, with_impl);
+        assert_eq!(
+            full.implementation_file,
+            Some(with_impl.join("IMPLEMENTATION.md"))
+        );
+
+        let bare = project_from_dir(&without_impl).expect("STATE.md present");
+        assert_eq!(bare.name, "bare");
+        assert_eq!(bare.implementation_file, None);
+
+        assert!(project_from_dir(&empty).is_none(), "no STATE.md marker");
+    }
+
+    #[test]
+    fn resolve_project_falls_back_to_current_dir_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = make_project(tmp.path(), "unlisted", true);
+
+        // Discovery over an empty root list knows nothing about `unlisted`;
+        // the name-based resolution must still find it via its directory.
+        let by_dir = project_from_dir(&dir).unwrap();
+        assert_eq!(by_dir.name, "unlisted");
+        assert_eq!(by_dir.root, dir);
     }
 }

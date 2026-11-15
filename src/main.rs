@@ -139,8 +139,10 @@ fn cmd_close(project_name: Option<&str>) -> Result<(), Box<dyn std::error::Error
 
 /// `governor health [project]`
 fn cmd_health(project_name: Option<&str>, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Named projects resolve through the same path as start/close: discovery
+    // first, then the current directory when the name matches it.
     let target = match project_name {
-        Some(name) => Some(project::find_project(name)?),
+        Some(name) => Some(project::resolve_project(Some(name))?),
         None => None,
     };
 

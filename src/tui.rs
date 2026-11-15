@@ -29,7 +29,16 @@ pub enum TuiError {
 ///
 /// Returns the selected project, or `TuiError::Cancelled` if the user quits.
 pub fn select_project() -> Result<Project, TuiError> {
-    let projects = discover_projects()?;
+    let mut projects = discover_projects()?;
+    // Offer the project in the current directory first, even when it is not
+    // visible through the configured workspace roots — the user is already
+    // sitting in it, so it is the most likely choice.
+    if let Some(cwd) = crate::project::project_in_current_dir() {
+        let already_listed = projects.iter().any(|p| same_root(&p.root, &cwd.root));
+        if !already_listed {
+            projects.insert(0, cwd);
+        }
+    }
     if projects.is_empty() {
         return Err(TuiError::Project(ProjectError::NoProjectsFound));
     }
@@ -41,6 +50,15 @@ pub fn select_project() -> Result<Project, TuiError> {
 
     ratatui::restore();
     result
+}
+
+/// True when two paths refer to the same directory (canonicalised compare,
+/// falling back to exact equality for paths that cannot be canonicalised).
+fn same_root(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => a == b,
+    }
 }
 
 /// Application state for the TUI.

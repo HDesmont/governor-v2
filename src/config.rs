@@ -58,7 +58,7 @@ pub const KNOWN_CLIPBOARD_BACKENDS: &[&str] = &["arboard"];
 ///
 /// Kept identical to the pre-config constants in `project.rs` so that
 /// upgrading does not change which projects are discovered.
-pub const DEFAULT_WORKSPACE_ROOTS: &[&str] = &[".", "../work", "../projects", "../workspace"];
+pub const DEFAULT_WORKSPACE_ROOTS: &[&str] = &[".", "..", "../work", "../projects", "../workspace"];
 
 /// Default relay preset when nothing is configured.
 pub const DEFAULT_PRESET: &str = "standard";
@@ -536,7 +536,7 @@ pub fn render_template() -> String {
 [workspace]
 # Directories scanned (one level deep) for STATE.md project markers.
 # Relative paths resolve against the current directory; ~ expands to home.
-roots = [".", "../work", "../projects", "../workspace"]
+roots = [".", "..", "../work", "../projects", "../workspace"]
 
 [session]
 # Relay preset applied when `governor relay` runs without --preset.

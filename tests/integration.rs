@@ -382,3 +382,91 @@ fn test_validate_without_check_root_prints_no_root_section() {
         "--check-root must stay off unless asked: {stdout}"
     );
 }
+
+// ── `governor health` contract-integrity E2E ─────────────────────
+
+/// Scaffold a minimal Governor project: STATE.md marker + contract file.
+fn write_health_project(dir: &std::path::Path) -> PathBuf {
+    let project = dir.join("health-e2e");
+    fs::create_dir_all(&project).unwrap();
+    fs::write(project.join("STATE.md"), "# STATE — health e2e\n").unwrap();
+    fs::write(project.join("IMPLEMENTATION.md"), "# Contract\n\nWork as planned.\n").unwrap();
+    project
+}
+
+/// Run `governor health` from inside a project directory that no workspace
+/// root covers — exactly how a session runs in its own checkout.
+fn run_health_inside(project: &std::path::Path, name: Option<&str>) -> std::process::Output {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_governor"));
+    match name {
+        Some(n) => cmd.args(["health", n]),
+        None => cmd.arg("health"),
+    };
+    // An explicit-but-absent config keeps discovery from seeing anything
+    // but the current directory, exercising the CWD fallback.
+    cmd.current_dir(project)
+        .env("GOVERNOR_CONFIG", project.join("absent-config.toml"))
+        .output()
+        .expect("governor binary must be runnable in tests")
+}
+
+#[test]
+fn test_health_detects_tampered_contract_from_project_dir() {
+    use governor::integrity;
+
+    let dir = tempfile::tempdir().unwrap();
+    let project = write_health_project(dir.path());
+    let impl_path = project.join("IMPLEMENTATION.md");
+
+    // Sign the contract the way `governor start` does.
+    integrity::sign_contract(&impl_path).unwrap();
+
+    // Break it the way an accidental edit does: content changes, hash stays.
+    let signed = fs::read_to_string(&impl_path).unwrap();
+    fs::write(&impl_path, signed.replace("Work as planned", "Work differently")).unwrap();
+
+    for name in [Some("health-e2e"), None] {
+        let output = run_health_inside(&project, name);
+        assert!(
+            output.status.success(),
+            "health reports, it does not crash. stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Contract Integrity"), "{stdout}");
+        assert!(stdout.contains("❌"), "tampering must fail a check: {stdout}");
+        assert!(stdout.contains("hash mismatch"), "failure must say why: {stdout}");
+    }
+}
+
+#[test]
+fn test_health_passes_freshly_signed_contract() {
+    use governor::integrity;
+
+    let dir = tempfile::tempdir().unwrap();
+    let project = write_health_project(dir.path());
+    integrity::sign_contract(&project.join("IMPLEMENTATION.md")).unwrap();
+
+    let output = run_health_inside(&project, Some("health-e2e"));
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("hash:"), "signed contract must pass: {stdout}");
+    assert!(!stdout.contains("hash mismatch"), "{stdout}");
+}
+
+#[test]
+fn test_health_warns_on_unsigned_contract_without_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = write_health_project(dir.path());
+
+    // No signature at all, and no roots cover the project: discovery is
+    // blind here, so health must still check the current directory's
+    // project and warn instead of staying silent.
+    let output = run_health_inside(&project, None);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("unsigned contract"),
+        "unsigned contract must be reported: {stdout}"
+    );
+}

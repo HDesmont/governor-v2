@@ -44,6 +44,11 @@ impl CheckStatus {
 }
 
 /// Run all health checks.
+///
+/// The project in the current directory is always deep-checked (STATE.md,
+/// contract integrity, lock), even when it is invisible to workspace-root
+/// discovery; `--verbose` additionally shallow-checks every other
+/// discovered project.
 pub fn run_health(project: Option<&Project>, verbose: bool) -> Vec<CheckResult> {
     let mut results = Vec::new();
 
@@ -58,48 +63,65 @@ pub fn run_health(project: Option<&Project>, verbose: bool) -> Vec<CheckResult> 
     }
 
     // ── Project discovery ────────────────────────────────────────
-    match discover_projects() {
-        Ok(projects) => {
-            results.push(CheckResult {
-                name: "Project Discovery".into(),
-                status: CheckStatus::Pass,
-                detail: format!("found {} project(s)", projects.len()),
-            });
+    let cwd_project = if project.is_none() {
+        crate::project::project_in_current_dir()
+    } else {
+        None
+    };
+    let deep_target = project.or(cwd_project.as_ref());
 
-            if verbose {
-                for p in &projects {
-                    results.push(CheckResult {
-                        name: format!("  └ {}", p.name),
-                        status: if p.is_locked() {
-                            CheckStatus::Warn
-                        } else {
-                            CheckStatus::Pass
-                        },
-                        detail: if p.is_locked() {
-                            "locked (active session)".into()
-                        } else {
-                            "available".into()
-                        },
-                    });
-                }
-            }
+    let discovered = discover_projects();
+    let (discovery_status, discovery_detail) = match &discovered {
+        Ok(projects) => (
+            CheckStatus::Pass,
+            format!("found {} project(s)", projects.len()),
+        ),
+        // An empty workspace is expected when the only Governor project in
+        // play is the current directory itself: that is a configuration
+        // inconvenience (the roots do not cover it), not a broken workspace.
+        Err(e) if deep_target.is_some() => (CheckStatus::Warn, e.to_string()),
+        Err(e) => (CheckStatus::Fail, e.to_string()),
+    };
+    results.push(CheckResult {
+        name: "Project Discovery".into(),
+        status: discovery_status,
+        detail: discovery_detail,
+    });
 
-            // If a specific project was requested, run deep checks.
-            if let Some(target) = project {
-                results.extend(run_project_checks(target, verbose));
-            } else if verbose {
-                // Run shallow checks on all projects.
-                for p in &projects {
-                    results.extend(run_project_checks(p, false));
-                }
+    if verbose {
+        if let Ok(projects) = &discovered {
+            for p in projects {
+                results.push(CheckResult {
+                    name: format!("  └ {}", p.name),
+                    status: if p.is_locked() {
+                        CheckStatus::Warn
+                    } else {
+                        CheckStatus::Pass
+                    },
+                    detail: if p.is_locked() {
+                        "locked (active session)".into()
+                    } else {
+                        "available".into()
+                    },
+                });
             }
         }
-        Err(e) => {
-            results.push(CheckResult {
-                name: "Project Discovery".into(),
-                status: CheckStatus::Fail,
-                detail: e.to_string(),
-            });
+    }
+
+    // Deep checks on the requested project, or on the current directory's
+    // project; with --verbose and no explicit target, shallow-check every
+    // other discovered project too.
+    if let Some(target) = deep_target {
+        results.extend(run_project_checks(target, verbose));
+    }
+    if verbose && project.is_none() {
+        if let Ok(projects) = &discovered {
+            for p in projects {
+                if deep_target.is_some_and(|t| same_dir(&t.root, &p.root)) {
+                    continue; // already deep-checked above
+                }
+                results.extend(run_project_checks(p, false));
+            }
         }
     }
 
@@ -107,6 +129,23 @@ pub fn run_health(project: Option<&Project>, verbose: bool) -> Vec<CheckResult> 
     results.push(check_stale_locks());
 
     results
+}
+
+/// Deep-check a single project: STATE.md, contract integrity, lock state.
+pub fn check_project(project: &Project) -> Vec<CheckResult> {
+    run_project_checks(project, false)
+}
+
+/// True when two paths refer to the same directory.
+///
+/// Comparison canonicalises both sides so `.`/`..`-spellings of the same
+/// directory are recognised; paths that cannot be canonicalised fall back
+/// to exact equality.
+fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => a == b,
+    }
 }
 
 /// Check clipboard availability.
@@ -172,8 +211,8 @@ fn run_project_checks(project: &Project, _verbose: bool) -> Vec<CheckResult> {
     }
 
     // IMPLEMENTATION.md integrity.
-    if let Some(ref impl_path) = project.implementation_file {
-        match integrity::validate_contract(impl_path) {
+    match &project.implementation_file {
+        Some(impl_path) => match integrity::validate_contract(impl_path) {
             Ok(hash) => {
                 results.push(CheckResult {
                     name: format!("{}: Contract Integrity", project.name),
@@ -195,6 +234,13 @@ fn run_project_checks(project: &Project, _verbose: bool) -> Vec<CheckResult> {
                     detail: e.to_string(),
                 });
             }
+        },
+        None => {
+            results.push(CheckResult {
+                name: format!("{}: Contract Integrity", project.name),
+                status: CheckStatus::Warn,
+                detail: "no IMPLEMENTATION.md (contract file missing)".into(),
+            });
         }
     }
 
@@ -205,8 +251,6 @@ fn run_project_checks(project: &Project, _verbose: bool) -> Vec<CheckResult> {
             Ok(json) => {
                 if let Ok(info) = serde_json::from_str::<crate::lock::LockInfo>(&json) {
                     let alive = crate::lock::is_pid_alive(info.pid);
-                    // is_pid_alive is defined in lock.rs but re-exported here conceptually.
-                    // We inline a simple check.
                     results.push(CheckResult {
                         name: format!("{}: Lock Status", project.name),
                         // A lock always warrants a warning: alive means the
@@ -533,6 +577,7 @@ pub fn print_results(results: &[CheckResult]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::{Mutex, MutexGuard};
 
     /// Serialises every test in this module that touches the system clipboard
@@ -549,6 +594,104 @@ mod tests {
         TEST_CLIPBOARD_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Create `<root>/<name>/STATE.md` (+ optionally IMPLEMENTATION.md) and
+    /// return the project handle for it.
+    fn fixture_project(root: &Path, name: &str, with_impl: bool) -> Project {
+        let dir = root.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("STATE.md"), format!("# STATE — {name}\n")).unwrap();
+        if with_impl {
+            std::fs::write(
+                dir.join("IMPLEMENTATION.md"),
+                "# Contract\n\nBuild a thing.\n",
+            )
+            .unwrap();
+        }
+        crate::project::project_from_dir(&dir).expect("fixture must be a project")
+    }
+
+    /// The result of the project's contract-integrity check.
+    fn contract_result(results: &[CheckResult]) -> &CheckResult {
+        results
+            .iter()
+            .find(|r| r.name.contains("Contract Integrity"))
+            .expect("contract check must be reported")
+    }
+
+    #[test]
+    fn contract_integrity_passes_after_signing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = fixture_project(tmp.path(), "signed", true);
+
+        let impl_path = project.implementation_file.as_ref().unwrap();
+        integrity::sign_contract(impl_path).unwrap();
+
+        let results = check_project(&project);
+        let contract = contract_result(&results);
+        assert!(matches!(contract.status, CheckStatus::Pass), "{:?}", contract.detail);
+        assert!(contract.detail.starts_with("hash: "));
+    }
+
+    #[test]
+    fn contract_integrity_detects_tampering() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = fixture_project(tmp.path(), "tampered", true);
+
+        let impl_path = project.implementation_file.as_ref().unwrap();
+        integrity::sign_contract(impl_path).unwrap();
+
+        // Break the signed contract the way an accidental edit would.
+        let path = impl_path.clone();
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, content.replace("Build a thing", "Build another thing"))
+            .unwrap();
+
+        let results = check_project(&project);
+        let contract = contract_result(&results);
+        assert!(matches!(contract.status, CheckStatus::Fail), "{:?}", contract.detail);
+        assert!(
+            contract.detail.contains("hash mismatch"),
+            "failure must say why: {:?}",
+            contract.detail
+        );
+    }
+
+    #[test]
+    fn contract_integrity_warns_on_unsigned_contract() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = fixture_project(tmp.path(), "unsigned", true);
+
+        let results = check_project(&project);
+        let contract = contract_result(&results);
+        assert!(matches!(contract.status, CheckStatus::Warn), "{:?}", contract.detail);
+        assert!(contract.detail.contains("unsigned"));
+    }
+
+    #[test]
+    fn contract_integrity_warns_on_missing_contract_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = fixture_project(tmp.path(), "no-contract", false);
+
+        assert!(project.implementation_file.is_none());
+        let results = check_project(&project);
+        let contract = contract_result(&results);
+        assert!(matches!(contract.status, CheckStatus::Warn), "{:?}", contract.detail);
+        assert!(contract.detail.contains("missing"));
+    }
+
+    #[test]
+    fn state_md_check_passes_for_valid_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = fixture_project(tmp.path(), "with-state", true);
+
+        let results = check_project(&project);
+        let state = results
+            .iter()
+            .find(|r| r.name.contains("STATE.md"))
+            .expect("STATE.md check must be reported");
+        assert!(matches!(state.status, CheckStatus::Pass), "{:?}", state.detail);
     }
 
     #[test]
