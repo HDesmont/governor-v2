@@ -138,6 +138,9 @@ fn cmd_close(project_name: Option<&str>) -> Result<(), Box<dyn std::error::Error
 }
 
 /// `governor health [project]`
+///
+/// Exits with code 1 when at least one check reports a hard failure
+/// (`CheckStatus::Fail`); warnings alone still exit 0.
 fn cmd_health(project_name: Option<&str>, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
     // Named projects resolve through the same path as start/close: discovery
     // first, then the current directory when the name matches it.
@@ -148,6 +151,11 @@ fn cmd_health(project_name: Option<&str>, verbose: bool) -> Result<(), Box<dyn s
 
     let results = health::run_health(target.as_ref(), verbose);
     health::print_results(&results);
+
+    if health::has_failures(&results) {
+        eprintln!("❌ Health check failed (see ❌ entries above).");
+        process::exit(1);
+    }
 
     Ok(())
 }

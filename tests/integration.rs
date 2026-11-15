@@ -427,9 +427,10 @@ fn test_health_detects_tampered_contract_from_project_dir() {
 
     for name in [Some("health-e2e"), None] {
         let output = run_health_inside(&project, name);
-        assert!(
-            output.status.success(),
-            "health reports, it does not crash. stderr: {}",
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "tampered contract must exit 1. stderr: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -452,6 +453,51 @@ fn test_health_passes_freshly_signed_contract() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("hash:"), "signed contract must pass: {stdout}");
     assert!(!stdout.contains("hash mismatch"), "{stdout}");
+}
+
+/// `governor health` exit-code contract: Fail → 1, Warn/Pass → 0.
+#[test]
+fn test_health_exit_code_one_on_failed_check() {
+    use governor::integrity;
+
+    let dir = tempfile::tempdir().unwrap();
+    let project = write_health_project(dir.path());
+    let impl_path = project.join("IMPLEMENTATION.md");
+
+    integrity::sign_contract(&impl_path).unwrap();
+    let signed = fs::read_to_string(&impl_path).unwrap();
+    fs::write(&impl_path, signed.replace("Work as planned", "Work differently")).unwrap();
+
+    let output = run_health_inside(&project, Some("health-e2e"));
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a ❌ Fail check must fail the process. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("failures"), "summary must count failures: {stdout}");
+}
+
+#[test]
+fn test_health_exit_code_zero_with_warnings_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = write_health_project(dir.path());
+
+    // Unsigned contract → ⚠️ Warn, never ❌ Fail: the process must succeed.
+    let output = run_health_inside(&project, None);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "warnings alone must not fail health. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("unsigned contract"), "warning must be reported: {stdout}");
+    assert!(
+        stdout.contains("⚠️"),
+        "warning icon expected in report: {stdout}"
+    );
 }
 
 #[test]

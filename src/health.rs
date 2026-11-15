@@ -539,6 +539,17 @@ fn check_relay_sanity() -> CheckResult {
     }
 }
 
+/// True when at least one check reported a hard failure.
+///
+/// Warnings do not count: `governor health` must exit 0 when the workspace
+/// is degraded but intact, and exit 1 only when something is actually broken
+/// (so CI and scripts can gate on the exit code).
+pub fn has_failures(results: &[CheckResult]) -> bool {
+    results
+        .iter()
+        .any(|r| matches!(r.status, CheckStatus::Fail))
+}
+
 /// Print health check results to stdout in a nice format.
 pub fn print_results(results: &[CheckResult]) {
     println!();
@@ -768,5 +779,21 @@ mod tests {
         ];
         // Should not panic
         print_results(&results);
+    }
+
+    #[test]
+    fn test_has_failures_detects_fail_only() {
+        assert!(!has_failures(&[]), "empty report is not a failure");
+        assert!(!has_failures(&[
+            CheckResult { name: "a".into(), status: CheckStatus::Pass, detail: String::new() },
+            CheckResult { name: "b".into(), status: CheckStatus::Warn, detail: String::new() },
+        ]));
+        assert!(has_failures(&[
+            CheckResult { name: "a".into(), status: CheckStatus::Pass, detail: String::new() },
+            CheckResult { name: "b".into(), status: CheckStatus::Fail, detail: String::new() },
+        ]));
+        assert!(has_failures(&[
+            CheckResult { name: "b".into(), status: CheckStatus::Fail, detail: String::new() },
+        ]));
     }
 }
