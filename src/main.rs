@@ -17,7 +17,7 @@
 
 use clap::{Parser, CommandFactory};
 use governor::cli;
-use governor::{config, health, init, lock, project, relay, session};
+use governor::{config, health, init, lock, project, relay, session, tui};
 use std::path::Path;
 use std::process;
 use clap_complete::{Shell, generate};
@@ -43,8 +43,32 @@ fn main() {
 }
 
 /// `governor start [project]`
+///
+/// Without a project name, opens an interactive TUI project selector.
 fn cmd_start(project_name: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    let project = project::resolve_project(project_name)?;
+    let project = match project_name {
+        // Direct start for a named project — no TUI.
+        Some(name) => project::resolve_project(Some(name))?,
+        // Interactive TUI selection.
+        None => match tui::select_project() {
+            Ok(p) => p,
+            Err(tui::TuiError::Cancelled) => {
+                eprintln!("👋 Project selection cancelled. No session started.");
+                return Ok(());
+            }
+            Err(tui::TuiError::Project(project::ProjectError::NoProjectsFound)) => {
+                eprintln!("❌ No Governor projects found.");
+                eprintln!();
+                eprintln!("   A project is any directory containing a STATE.md file.");
+                eprintln!("   To fix this, you can:");
+                eprintln!("     1. Run `governor init` inside a project directory;");
+                eprintln!("     2. Add workspace roots to the governor config");
+                eprintln!("        (`governor config --show` to inspect it).");
+                process::exit(1);
+            }
+            Err(e) => return Err(e.into()),
+        },
+    };
 
     eprintln!("🚀 Starting session for: {}", project.name);
     eprintln!("   Project root: {}", project.root.display());
