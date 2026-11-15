@@ -8,6 +8,7 @@
 //! governor health            — workspace integrity check
 //! governor relay             — background relay daemon
 //! governor projects          — list discovered projects
+//! governor history           — session history table
 //! ```
 
 use clap::{Parser, Subcommand};
@@ -110,6 +111,18 @@ pub enum Command {
         #[arg(short, long)]
         verbose: bool,
     },
+
+    /// Show the project's session history.
+    ///
+    /// Prints the most recent sessions (date, start time, duration, final
+    /// status, contract hash) from the project's session history log.
+    History {
+        /// Project name (current directory by default).
+        project: Option<String>,
+        /// Number of recent sessions to show.
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
 }
 
 #[cfg(test)]
@@ -203,6 +216,35 @@ mod tests {
                 assert_eq!(template.as_deref(), Some("minimal"));
             }
             other => panic!("expected Init, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn history_defaults_to_limit_ten() {
+        let cli = Cli::try_parse_from(["governor", "history"]).expect("must parse");
+        match cli.command {
+            Command::History { project, limit } => {
+                assert_eq!(project, None);
+                assert_eq!(limit, 10, "default limit is the last 10 sessions");
+            }
+            other => panic!("expected History, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn history_accepts_project_and_custom_limit() {
+        for argv in [
+            vec!["governor", "history", "my-project", "--limit", "5"],
+            vec!["governor", "history", "my-project", "-l", "5"],
+        ] {
+            let cli = Cli::try_parse_from(argv).expect("must parse");
+            match cli.command {
+                Command::History { project, limit } => {
+                    assert_eq!(project.as_deref(), Some("my-project"));
+                    assert_eq!(limit, 5);
+                }
+                other => panic!("expected History, got {other:?}"),
+            }
         }
     }
 }

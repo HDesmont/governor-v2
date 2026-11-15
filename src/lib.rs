@@ -7,6 +7,7 @@ pub mod cli;
 pub mod clipboard;
 pub mod context;
 pub mod health;
+pub mod history;
 pub mod hud;
 pub mod init;
 pub mod integrity;

@@ -1,10 +1,12 @@
 # STATE — Operational Memory
 
 ## Current Task
-v2.1 Polish: session history log (template system сделан; config и completions уже сделаны).
+Спринт выполнен: бюджет 1.5 MB (ADR-008) + session history log (v2.1 Polish). Следующий пункт v2.1 Polish — по согласованию.
 
 ## Just Done
-- [x] Template system (v2.1): `governor init --template <name>` / `-t`; 4 built-in (default/minimal/rust/frontend); custom из `~/.governor/templates/<name>/{STATE.md,IMPLEMENTATION.md}`; unknown → ошибка со списком доступных (built-in + валидные custom); имя шаблона — только [A-Za-z0-9_-] (path traversal отсечён); env-хук `GOVERNOR_TEMPLATES_DIR` для тестов/переноса корня; без флага — default (обратная совместимость, старые `init_project`/`init_in_dir` сохранены); 14 новых unit + 3 CLI-теста; README: секция Templates; бинарник 1017 KB (+8.7 KB от шаблонов)
+- [x] Session history log (v2.1): модуль `src/history.rs` — append-only JSONL `.governor/history.jsonl`; `governor start` пишет событие start (ts, PID, host, SHA-256 контракта), `governor close` — close со статусом Success (контракт валиден/отсутствует) / Warning (подписан при закрытии) / Fail (hash mismatch); `session::close_session` возвращает `CloseOutcome{ContractCheck}`; новая команда `governor history [project] [--limit N]` (default 10) — таблица Дата/Start/Длительность/Статус/Hash (сокращён до 8 hex); открытая сессия → Active, orphan close сохраняется; нет истории → "No session history found for this project", битая строка → ошибка с путём и номером строки; chrono + feature "serde"; 14 unit-тестов history + 2 CLI-теста (163 unit + 25 integration = 188); README: таблица команд + Session lifecycle; бинарник 1068 KB (< 1.5 MB); запись истории best-effort (ошибка не валит сессию)
+- [x] Бюджет бинарника повышен до 1.5 MB: ADR-008 (docs/DECISIONS.md) — секция Size budget с историей повышений (700 KB → 1 MB → 1.5 MB), README `< 1.5 MB`; коммит `docs: raise binary size budget to 1.5 MB`
+- [x] Template system (v2.1): `governor init --template <name>` / `-t`; 4 built-in (default/minimal/rust/frontend); custom из `~/.governor/templates/<name>/{STATE.md,IMPLEMENTATION.md}`; unknown → ошибка со списком доступных (built-in + валидные custom); имя шаблона — только [A-Za-z0-9_-] (path traversal отсечён); env-хук `GOVERNOR_TEMPLATES_DIR` для тестов/перенос корня; без флага — default (обратная совместимость, старые `init_project`/`init_in_dir` сохранены); 14 новых unit + 3 CLI-теста; README: секция Templates; бинарник 1017 KB (+8.7 KB от шаблонов)
 - [x] MVP released: тег `v2.0.0` → GitHub Release с `governor-x86_64-pc-windows-msvc.zip` + `.sha256` (прогон 43721042465 — все 3 джобы зелёные); E2E-тест one-liner `iwr -useb .../install.ps1 | iex` на чистой машине (Windows 11, PowerShell) пройден: SHA-256 verified, PATH обновлён, в новом терминале `governor --version` → 2.0.0 и `--help` показывает все команды
 - [x] CI зелёный: https://github.com/HDesmont/governor-v2/actions — `clippy + test (windows)` ✅ и stretch-джоба `test (ubuntu)` ✅ (прогон 43717616662, b0f41f8)
 - [x] Фикс гонки lock (упал на CI): удаление lock-файла между `exists()` и чтением отдавало `IoError(NotFound)` и валило `acquire_with_timeout` → `remove_if_exists` трактует NotFound как «лок свободен»
@@ -37,6 +39,7 @@ v2.1 Polish: session history log (template system сделан; config и comple
 - [x] CI (GitHub Actions): push/PR в main, windows-latest (clippy -D warnings, cargo test, release build) + ubuntu-latest stretch (cargo test) — обе джобы зелёные; бейдж в README
 - [x] Packaging: `install.ps1` — установка в `%LOCALAPPDATA%\Governor\bin`, идемпотентный user-PATH (raw-чтение, REG_EXPAND_SZ), `-Uninstall`, `-Local`, `-Version`; CI-джоба `release` на тегах `v*` публикует zip + `.sha256`; README: Windows installation one-liner
 - [x] Template system: `init --template/-t` — 4 built-in + custom из `~/.governor/templates/<name>/`; понятная ошибка unknown со списком; 172 теста (147 unit + 25 integration); бинарник 1017 KB (< 1 MB, запас 7 KB)
+- [x] Session history log + команда `governor history` (v2.1): JSONL `.governor/history.jsonl`, статусы Success/Warning/Fail из валидации контракта при close; 188 тестов; бинарник 1068 KB (< 1.5 MB)
 
 ## Context
 - Проект: Governor v2.0 — AI-ассистированное управление разработкой
@@ -77,3 +80,9 @@ v2.1 Polish: session history log (template system сделан; config и comple
   (тот же паттерн, что `GOVERNOR_CONFIG` в config.rs; в тестах — мьютекс-фикстура, env снимается в Drop);
   имена кастомных валидируются `[A-Za-z0-9_-]` до любого обращения к FS; в списке available кастомные
   показываются только если директория содержит ОБА файла (для вывода ошибки шаблон не читается, только is_file-проверки)
+- Session history: append-only JSONL (события start/close, сопоставление LIFO — close закрывает последнюю
+  открытую сессию); `governor start` БЕЗ аргумента всегда открывает TUI (для скриптов — `start <имя>`);
+  ts — RFC 3339 UTC (chrono serde), таблица рендерится в локальной зоне; duration < 0 клампится в "0s";
+  контрактный хэш в истории — `integrity::hash_file(IMPLEMENTATION.md)` на момент события, в таблице
+  сокращается до 8 hex; запись истории в main.rs — best-effort (⚠️ в stderr, сессия не падает);
+  запись в cargo test-фикстурах через Set-Content — указывать `-Encoding utf8` (default pwsh тут UTF-16)

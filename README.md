@@ -105,6 +105,7 @@ cargo build --release
 | `governor health [project] [--verbose]` | Run workspace health checks (clipboard, filesystem, contract integrity, locks). **Exits 1 if any check fails (❌), 0 on pass/warn only** — safe to use in CI and scripts. |
 | `governor relay [--preset minimal\|standard\|full] [--hud]` | Run the relay daemon: watches the clipboard for `GOV-CMD` markers and executes them, optionally with an always-on-top HUD status bar. |
 | `governor projects [--verbose]` | List discovered projects with lock status and metadata. |
+| `governor history [project] [--limit N]` | Print the project's session history as a table: date, start time, duration, final status (Success / Warning / Fail), contract hash. Shows the last 10 sessions by default; kept in `.governor/history.jsonl`. |
 | `governor config --show` / `--validate [path] [--check-root]` | Show the effective configuration or validate a config file (`~/.governor/config.toml`). |
 | `governor completions <shell>` | Print shell completions for bash, zsh, fish, PowerShell, or Elvish. |
 
@@ -246,6 +247,18 @@ init → start (context → clipboard, lock acquired)
 Locks (`session.lock`, JSON with PID + host + timestamp) prevent concurrent
 sessions; stale locks are detected by PID liveness and reported by
 `governor health`.
+
+Every `start`/`close` pair is also appended to the project's session history
+log (`.governor/history.jsonl`), so sessions outlive the lock file:
+
+```bash
+governor history             # last 10 sessions
+governor history --limit 25  # more of the past
+```
+
+The log is append-only JSON Lines — one event per line, written without
+rewriting the file. A project with no history prints
+`No session history found for this project` instead of failing.
 
 ---
 

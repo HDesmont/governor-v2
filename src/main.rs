@@ -13,11 +13,12 @@
 //! governor health             # Workspace integrity check
 //! governor relay              # Background relay daemon
 //! governor projects           # List discovered projects
+//! governor history            # Session history table
 //! ```
 
 use clap::{Parser, CommandFactory};
 use governor::cli;
-use governor::{config, health, init, lock, project, relay, session, tui};
+use governor::{config, health, history, init, integrity, lock, project, relay, session, tui};
 use std::path::Path;
 use std::process;
 use clap_complete::{Shell, generate};
@@ -34,6 +35,7 @@ fn main() {
         cli::Command::Config { show, validate, check_root } => cmd_config(show, validate.as_deref(), check_root),
         cli::Command::Completions { shell } => cmd_completions(&shell),
         cli::Command::Projects { verbose } => cmd_projects(verbose),
+        cli::Command::History { project, limit } => cmd_history(project.as_deref(), limit),
     };
 
     if let Err(e) = result {
@@ -83,6 +85,15 @@ fn cmd_start(project_name: Option<&str>) -> Result<(), Box<dyn std::error::Error
 
     let (result, _lock) = session::start_session(&project, lock_timeout)?;
 
+    // ── Session history (best-effort: never breaks the session) ──
+    let contract_hash = project
+        .implementation_file
+        .as_ref()
+        .and_then(|path| integrity::hash_file(path).ok());
+    if let Err(e) = history::record_start(&project.root, contract_hash.as_deref()) {
+        eprintln!("⚠️  Could not record session history: {}", e);
+    }
+
     eprintln!("✅ Session started");
     eprintln!("   Context: {} bytes", result.context_size);
     eprintln!("   Hash:    {}", result.context_hash);
@@ -129,11 +140,28 @@ fn cmd_close(project_name: Option<&str>) -> Result<(), Box<dyn std::error::Error
     // Try to acquire lock with timeout, but ignore errors (close can proceed without lock)
     lock.acquire_with_timeout(lock_timeout).ok();
 
-    session::close_session(&project, &mut lock)?;
+    let outcome = session::close_session(&project, &mut lock)?;
+
+    // ── Session history (best-effort: never breaks the session) ──
+    let status = match outcome.contract_check {
+        session::ContractCheck::Validated => history::SessionStatus::Success,
+        session::ContractCheck::SignedNow => history::SessionStatus::Warning,
+        session::ContractCheck::Failed => history::SessionStatus::Fail,
+    };
+    if let Err(e) = history::record_close(&project.root, status) {
+        eprintln!("⚠️  Could not record session history: {}", e);
+    }
 
     eprintln!("✅ Session closed");
     eprintln!("📋 Verification context copied to clipboard.");
 
+    Ok(())
+}
+
+/// `governor history [project] [--limit N]`
+fn cmd_history(project_name: Option<&str>, limit: usize) -> Result<(), Box<dyn std::error::Error>> {
+    let project = project::resolve_project(project_name)?;
+    history::print_history(&project.root, limit)?;
     Ok(())
 }
 

@@ -81,6 +81,23 @@ pub fn start_session(project: &Project, lock_timeout_seconds: u64) -> Result<(Se
     Ok((result, lock))
 }
 
+/// Result of contract validation during a session close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContractCheck {
+    /// The embedded hash matched the recomputed one (or there is no contract).
+    Validated,
+    /// The contract had no hash yet and was signed during this close.
+    SignedNow,
+    /// Validation failed: hash mismatch or an unreadable contract.
+    Failed,
+}
+
+/// Outcome summary of a session close.
+#[derive(Debug, Clone, Copy)]
+pub struct CloseOutcome {
+    pub contract_check: ContractCheck,
+}
+
 /// Close a session for the given project.
 ///
 /// 1. Validate implementation contract integrity
@@ -90,8 +107,9 @@ pub fn start_session(project: &Project, lock_timeout_seconds: u64) -> Result<(Se
 pub fn close_session(
     project: &Project,
     lock: &mut SessionLock,
-) -> Result<(), SessionError> {
+) -> Result<CloseOutcome, SessionError> {
     // ── 1. Validate contract integrity ───────────────────────────
+    let mut contract_check = ContractCheck::Validated;
     if let Some(ref impl_path) = project.implementation_file {
         match integrity::validate_contract(impl_path) {
             Ok(hash) => {
@@ -101,11 +119,13 @@ pub fn close_session(
                 // No hash — first close without signing. Sign it now.
                 integrity::sign_contract(impl_path)?;
                 eprintln!("📝 Contract signed for future verification.");
+                contract_check = ContractCheck::SignedNow;
             }
             Err(e) => {
                 eprintln!("⚠️  Contract integrity check failed: {}", e);
                 // Continue with close anyway — the verification context will
                 // include the warning for the Architect.
+                contract_check = ContractCheck::Failed;
             }
         }
     }
@@ -124,7 +144,7 @@ pub fn close_session(
     // ── 4. Release lock ──────────────────────────────────────────
     lock.release()?;
 
-    Ok(())
+    Ok(CloseOutcome { contract_check })
 }
 
 /// Check whether a project has an active session.
