@@ -783,20 +783,24 @@ max_output_bytes = 1024
     #[test]
     fn env_workspace_roots_override_file_list() {
         let fx = EnvFixture::with_file("[workspace]\nroots = [\"./from-file\"]\n");
-        let joined = std::env::join_paths(["C:/alpha", "D:/beta", "./gamma"])
+        // Colon-free paths: on Unix `:` IS the PATH separator, so Windows-style
+        // drive letters (`C:/alpha`) cannot be joined into a single env value.
+        let joined = std::env::join_paths(["/alpha", "/beta", "./gamma"])
             .expect("test roots must be joinable");
         fx.set(ENV_WORKSPACE_ROOTS, joined.to_str().unwrap());
         let cfg = Config::load().unwrap();
-        assert_eq!(cfg.workspace_roots, vec!["C:/alpha", "D:/beta", "./gamma"]);
+        assert_eq!(cfg.workspace_roots, vec!["/alpha", "/beta", "./gamma"]);
     }
 
     #[test]
     fn env_workspace_roots_are_trimmed_and_empties_dropped() {
         let fx = EnvFixture::with_file("");
         let sep = if cfg!(windows) { ";" } else { ":" };
-        fx.set(ENV_WORKSPACE_ROOTS, &format!("{sep} C:/one {sep}{sep} C:/two {sep}"));
+        // Colon-free paths (`/one`, not `C:/one`): on Unix the colon would be
+        // consumed by the PATH-separator split and shred the path in two.
+        fx.set(ENV_WORKSPACE_ROOTS, &format!("{sep} /one {sep}{sep} /two {sep}"));
         let cfg = Config::load().unwrap();
-        assert_eq!(cfg.workspace_roots, vec!["C:/one", "C:/two"]);
+        assert_eq!(cfg.workspace_roots, vec!["/one", "/two"]);
     }
 
     #[test]
@@ -832,7 +836,11 @@ max_output_bytes = 1024
     fn blank_env_values_are_treated_as_unset() {
         let fx = EnvFixture::with_file("[session]\npreset = \"full\"\n");
         fx.set(ENV_PRESET, "   ");
-        fx.set(ENV_WORKSPACE_ROOTS, "; ; ;;");
+        // Use the platform's PATH separator so that every segment really is
+        // empty on both Windows (`;`) and Unix (`:`) — only then does the
+        // parse produce an all-empty list, i.e. "no override".
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        fx.set(ENV_WORKSPACE_ROOTS, &format!("{sep} {sep} {sep}{sep}"));
         fx.set(ENV_CLIPBOARD_BACKEND, "");
         let cfg = Config::load().unwrap();
         assert_eq!(cfg.preset, "full", "blank preset must not clobber the file value");
