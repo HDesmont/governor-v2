@@ -88,6 +88,21 @@ strip = true
 | Release build time | ~20 s | 42 s |
 | Tests | 30/30 | 30/30 (dev *and* `--release`) |
 
+**Size budget:**
+
+Artifact size is a user-visible property (ADR-002), so the release profile is
+paired with an explicit budget. The budget is a ceiling, not a target — it
+moves only when a feature legitimately needs the headroom:
+
+| Milestone | Budget | Measured then | What consumed the headroom |
+|-----------|--------|---------------|----------------------------|
+| v2.0 release | 700 KB | 537.5 KB | initial release profile |
+| v2.1 (completions) | 1 MB | 771 KB | shell completions, health diagnostics |
+| v2.1 (polish, 2026-11-15) | **1.5 MB** | 1017 KB | template system; session history next |
+
+The profile itself is unchanged — only the ceiling moves, and each raise is
+backed by a shipped feature rather than by growth on its own.
+
 **Rationale:**
 
 - ADR-002 makes the binary the single deliverable, so artifact size is a

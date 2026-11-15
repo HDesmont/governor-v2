@@ -8,7 +8,7 @@ tamper-evident contracts, and a clipboard-based transport that works with *any*
 AI chat, IDE, or agent.
 
 ```
-governor 2.0.0 — one binary, zero runtime dependencies, < 1 MB.
+governor 2.0.0 — one binary, zero runtime dependencies, < 1.5 MB.
 ```
 
 ---
