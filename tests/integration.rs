@@ -7,32 +7,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-/// Helper: create a temporary project fixture with STATE.md and IMPLEMENTATION.md.
-struct FixtureProject {
-    root: tempfile::TempDir,
-}
-
-impl FixtureProject {
-    fn new(name: &str, state_content: &str, impl_content: Option<&str>) -> Self {
-        let root = tempfile::tempdir().expect("failed to create temp dir");
-        let proj_dir = root.path().join(name);
-        fs::create_dir(&proj_dir).unwrap();
-
-        fs::write(proj_dir.join("STATE.md"), state_content).unwrap();
-
-        if let Some(impl_content) = impl_content {
-            fs::write(proj_dir.join("IMPLEMENTATION.md"), impl_content).unwrap();
-        }
-
-        FixtureProject { root }
-    }
-
-    fn path(&self) -> PathBuf {
-        // Return the first subdirectory (our project).
-        self.root.path().to_path_buf()
-    }
-}
-
 #[test]
 fn test_integrity_sign_and_validate() {
     use governor::integrity;

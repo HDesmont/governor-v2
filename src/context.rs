@@ -1006,7 +1006,7 @@ mod tests {
     #[test]
     fn refresh_touches_only_the_footer_timestamp() {
         let stale = "### STATE.md (Operational Memory)\n- Timestamp: SENTINEL-IN-STATE\n\n### Session Metadata\n- Timestamp: 2000-01-01 00:00:00 +00:00\n- Project: p\n";
-        let (refreshed, changed) = refresh_timestamp(&stale);
+        let (refreshed, changed) = refresh_timestamp(stale);
         assert!(changed);
         assert!(refreshed.contains("- Timestamp: SENTINEL-IN-STATE"), "user content must not be rewritten");
         assert!(!refreshed.contains("2000-01-01"));

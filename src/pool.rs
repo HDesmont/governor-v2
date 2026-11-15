@@ -23,8 +23,7 @@ pub fn default_pool_size(items: usize) -> usize {
     let cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
-        .min(MAX_THREADS)
-        .max(1);
+        .clamp(1, MAX_THREADS);
     items.min(cpus).max(1)
 }
 
@@ -157,7 +156,7 @@ mod tests {
         assert_eq!(default_pool_size(1), 1);
         for items in [2usize, 8, 64, 10_000] {
             let size = default_pool_size(items);
-            assert!(size >= 1 && size <= MAX_THREADS, "bad pool size {size}");
+            assert!((1..=MAX_THREADS).contains(&size), "bad pool size {size}");
             assert!(size <= items);
         }
         assert!(default_pool_size(100_000) <= MAX_THREADS);

@@ -232,10 +232,9 @@ fn format_response(result: &CommandResult) -> String {
         base64_encode(&result.stdout),
         base64_encode(&result.stderr),
     );
-    let b64 = base64_encode(&payload);
-    format!("{}", b64)
     // The relay protocol places the marker in clipboard for AI to read.
     // Full marker wrapping: <!-- GOV-RES:<b64> -->
+    base64_encode(&payload)
 }
 
 /// Result of executing a shell command.

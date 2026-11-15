@@ -15,7 +15,6 @@
 //! When stderr is not a terminal (piped logs, CI, `governor relay >> file`),
 //! the HUD degrades to ordinary log lines with no escape sequences at all.
 
-use std::fmt::Write as _; // for `write!` into a String
 use std::io::Write; // for `writeln!`/`queue!` into stderr
 use std::time::Duration;
 
@@ -352,12 +351,6 @@ impl<W: Write> Hud<W> {
         let _ = self.out.flush();
         self.shown = false;
         self.last_drawn.clear();
-    }
-
-    /// Test hook: what is currently on screen.
-    #[cfg(test)]
-    fn is_shown(&self) -> bool {
-        self.shown
     }
 }
 

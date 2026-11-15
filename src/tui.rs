@@ -96,8 +96,7 @@ fn run_app(terminal: &mut DefaultTerminal, projects: &[Project]) -> Result<Proje
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
-        if app.selected_index.is_some() {
-            let idx = app.selected_index.unwrap();
+        if let Some(idx) = app.selected_index {
             return Ok(app.projects[idx].clone());
         }
 

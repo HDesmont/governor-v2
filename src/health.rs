@@ -209,11 +209,9 @@ fn run_project_checks(project: &Project, _verbose: bool) -> Vec<CheckResult> {
                     // We inline a simple check.
                     results.push(CheckResult {
                         name: format!("{}: Lock Status", project.name),
-                        status: if alive {
-                            CheckStatus::Warn
-                        } else {
-                            CheckStatus::Warn
-                        },
+                        // A lock always warrants a warning: alive means the
+                        // session may still be running, stale means cleanup.
+                        status: CheckStatus::Warn,
                         detail: format!(
                             "PID {} on {} ({} — {})",
                             info.pid,
@@ -284,7 +282,7 @@ fn check_clipboard_throughput() -> CheckResult {
     use std::time::Instant;
 
     // Generate a 10 KB payload (approx).
-    let payload: String = std::iter::repeat('x').take(10_000).collect();
+    let payload: String = "x".repeat(10_000);
     let start = Instant::now();
     let result = crate::clipboard::round_trip(&payload);
     let elapsed = start.elapsed();
@@ -536,7 +534,6 @@ pub fn print_results(results: &[CheckResult]) {
 mod tests {
     use super::*;
     use std::sync::{Mutex, MutexGuard};
-    use tempfile::tempdir;
 
     /// Serialises every test in this module that touches the system clipboard
     /// (directly, or through `run_health`). The per-operation `CLIPBOARD_LOCK`
