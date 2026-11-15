@@ -1,9 +1,12 @@
 # STATE — Operational Memory
 
 ## Current Task
-Настроить CI (GitHub Actions, `.github/workflows/ci.yml`: clippy -D warnings + cargo test на windows-latest), затем — Packaging (install.ps1 / .msi).
+Packaging: install.ps1 (+ опционально .msi). CI настроен и зелёный.
 
 ## Just Done
+- [x] CI зелёный: https://github.com/HDesmont/governor-v2/actions — `clippy + test (windows)` ✅ и stretch-джоба `test (ubuntu)` ✅ (прогон 43717616662, b0f41f8)
+- [x] Фикс гонки lock (упал на CI): удаление lock-файла между `exists()` и чтением отдавало `IoError(NotFound)` и валило `acquire_with_timeout` → `remove_if_exists` трактует NotFound как «лок свободен»
+- [x] Портабельные config-фикстуры (упали на ubuntu): `env::split_paths` на Unix режет пути по `:` → Windows-пути `C:/x` в env-тестах заменены на бесколонные
 - [x] Exit-code фикс: `governor health` → Fail = exit 1, Warn/Pass = exit 0 (`has_failures` + `process::exit(1)` в `cmd_health`); unit- и integration-тесты на контракт
 - [x] README.md добавлен (+ бейдж CI)
 - [x] CI: `.github/workflows/ci.yml` — windows-latest, dtolnay/rust-toolchain@1.98.1 (пин = локальный тулчейн, rust-toolchain.toml не добавлен), clippy -D warnings + cargo test + release build; fmt-гейт не добавлен (rustfmt не установлен в кастомном тулчейне — осмысленный diff проверить негде)
@@ -29,6 +32,7 @@
 - [x] 158 тестов (133 unit + 25 integration) — проходят; релизный бинарник 851 KB (< 1 MB)
 - [x] Health exit-code контракт: `has_failures()` (Fail → 1, Warn/Pass → 0) + интеграционные тесты на tampered/unsigned контракт через реальный бинарник
 - [x] README.md: описание, установка, команды, архитектура
+- [x] CI (GitHub Actions): push/PR в main, windows-latest (clippy -D warnings, cargo test, release build) + ubuntu-latest stretch (cargo test) — обе джобы зелёные; бейдж в README
 
 ## Context
 - Проект: Governor v2.0 — AI-ассистированное управление разработкой
