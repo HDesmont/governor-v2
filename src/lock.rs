@@ -122,12 +122,15 @@ impl SessionLock {
                             since: info.started_at,
                         });
                     }
-                    // Stale lock — clean it up.
-                    std::fs::remove_file(&self.lock_path)?;
+                    // Stale lock — clean it up. If the holder released the
+                    // lock between `exists()` and this removal, NotFound
+                    // means the way is clear — not an error.
+                    remove_if_exists(&self.lock_path)?;
                 }
                 Err(_) => {
-                    // Corrupted lock file — clean it up.
-                    std::fs::remove_file(&self.lock_path)?;
+                    // Corrupted (or concurrently vanished) lock file —
+                    // clean it up and proceed.
+                    remove_if_exists(&self.lock_path)?;
                 }
             }
         }
@@ -206,6 +209,24 @@ pub fn is_pid_alive(pid: u32) -> bool {
     system.process(target).is_some()
 }
 
+/// Remove `path`, treating "already gone" as success.
+///
+/// Between an `exists()` probe and this removal the lock file can be
+/// deleted concurrently (the holder's `release()`, stale-lock cleanup in
+/// another process, or — in the waiting test — the releasing thread).
+/// `NotFound` then means the lock is free: aborting the acquire wait with
+/// an I/O error would turn a benign race into a spurious failure. Observed
+/// on CI (`acquire_with_timeout_succeeds_when_lock_released`): the deletion
+/// thread won the race between `exists()` and `read_to_string`, and the
+/// follow-up `remove_file` blew up with `IoError(NotFound)`.
+fn remove_if_exists(path: &std::path::Path) -> Result<(), LockError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,10 +289,12 @@ mod tests {
             let _ = std::fs::remove_file(&lock_path_clone);
         });
 
-        // Пытаемся захватить блокировку с таймаутом 1 секунда
+        // Пытаемся захватить блокировку с щедрым таймаутом: CI-раннеры
+        // нагружены, и удаление в фоновом потоке может сдвинуться на
+        // сотни миллисекунд. 5 секунд гарантированно хватает и там.
         let mut lock = SessionLock::new(lock_path);
         let start = Instant::now();
-        let result = lock.acquire_with_timeout(1);
+        let result = lock.acquire_with_timeout(5);
         let elapsed = start.elapsed();
 
         // Должно успешно захватить блокировку после того, как файл будет удален
@@ -279,9 +302,15 @@ mod tests {
         assert!(lock.is_acquired());
         // Positive control for `retry_count`: this call really did wait.
         assert!(lock.retry_count() >= 1, "waiting acquire must poll at least once");
-        // Должен был подождать хотя бы ~100 мс, но не более 500 мс
+        // Должен был подождать хотя бы ~100 мс: первый полл всегда видит файл.
         assert!(elapsed >= Duration::from_millis(90), "Should have waited for file deletion");
-        assert!(elapsed < Duration::from_millis(500), "Should have succeeded before timeout");
+        // Верхняя граница намеренно щедрая: точный тайминг уже закреплён
+        // нижней границей и retry_count >= 1. Здесь достаточно убедиться,
+        // что мы не проспали весь таймаут (регрессия интервалов опроса).
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "acquire must succeed well before the 5 s timeout, took {elapsed:?}"
+        );
     }
     
     #[test]

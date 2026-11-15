@@ -55,8 +55,9 @@
 - Автодополнения: clap генерирует через `clap_complete`
 - Project discovery (5.3): `discover_projects()` делегирует в `discover_in_roots*` → `pool::parallel_map`
   (по одному заданию на root, индексы через атомарный курсор, порядок результатов = порядок roots)
-- Известная нестабильность (НЕ связана с 5.3, воспроизводится на исходном коде): `health::*`-тесты с
-  clipboard (arboard) падают с `STATUS_HEAP_CORRUPTION` (0xc0000374) примерно в 1 случае из 2
-  (`cargo test --lib health::` → 4/8 аномальных выходов, тот же код без новых тестов);
-  `lock::tests::timeout_zero_equals_no_wait` мигает при загрузке CPU — в измеряемом пути (<100 мс)
-  запускается `tasklist` в `is_pid_alive`.
+- Известная нестабильность clipboard-тестов в процессе (`cargo test --lib health::`): arboard на Windows
+  падает с `STATUS_HEAP_CORRUPTION` (0xc0000374) примерно в 1 случае из 2 — это in-process arboard,
+  на бинарнике и в integration-тестах (отдельные процессы) не воспроизводится
+- Гонка acquire/wait найдена на CI (`lock::tests::acquire_with_timeout_succeeds_when_lock_released`):
+  удаление lock-файла между `exists()` и `read_to_string` отдавало `IoError(NotFound)` и валило ожидание.
+  Исправлено: `remove_if_exists` (NotFound = лок свободен), тайминговые границы теста ослаблены для нагруженных раннеров
