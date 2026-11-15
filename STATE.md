@@ -1,9 +1,10 @@
 # STATE — Operational Memory
 
 ## Current Task
-Packaging: install.ps1 (+ опционально .msi). CI настроен и зелёный.
+Первый релиз: запушить тег `v2.0.0` → release-джоба соберёт и приложит ZIP; дальше — v2.1 Polish.
 
 ## Just Done
+- [x] Packaging: `install.ps1` (корень репо) — установка в `%LOCALAPPDATA%\Governor\bin`, идемпотентный user-PATH, `-Uninstall`, `-Local`/`-LocalPath`, `-Version`; CI-джоба `release` на тегах `v*` публикует `governor-x86_64-pc-windows-msvc.zip` + `.sha256`; README: раздел Windows installation (one-liner `iwr -useb ... | iex`)
 - [x] CI зелёный: https://github.com/HDesmont/governor-v2/actions — `clippy + test (windows)` ✅ и stretch-джоба `test (ubuntu)` ✅ (прогон 43717616662, b0f41f8)
 - [x] Фикс гонки lock (упал на CI): удаление lock-файла между `exists()` и чтением отдавало `IoError(NotFound)` и валило `acquire_with_timeout` → `remove_if_exists` трактует NotFound как «лок свободен»
 - [x] Портабельные config-фикстуры (упали на ubuntu): `env::split_paths` на Unix режет пути по `:` → Windows-пути `C:/x` в env-тестах заменены на бесколонные
@@ -44,6 +45,8 @@ Packaging: install.ps1 (+ опционально .msi). CI настроен и �
 - Сборка: `cargo build --release` из `C:\work\governor-v2`
 
 ## Notes
+- install.ps1: user-PATH читается RAW из HKCU\Environment (DoNotExpandEnvironmentNames), иначе `%VAR%`-записи раскрылись бы и перезаписались литералами; запись через `[Environment]::SetEnvironmentVariable` (broadcast WM_SETTINGCHANGE) + восстановление kind=REG_EXPAND_SZ (она пишет REG_SZ). Сравнение записей — case-insensitive + TrimEnd('\'). Piped-режим (`iwr | iex`) определяется по пустому `$PSCommandPath`: ошибки делают `return`, а не `exit`, чтобы не убивать шелл пользователя
+- E2E-тест install.ps1 на реальной машине (5.1): `-Local` install → PATH +1 запись, kind сохранён; повторный запуск → «nothing to change», дублей нет; свежий процесс → `governor --version` ок; `-Version`/latest без релизов → понятный 404 и exit 1; `-Uninstall` → PATH побайтно восстановлен, директории удалены. Нюанс: при записи сбрасываются пустые записи (в т.ч. хвостовой `;`) — безвредно
 - Тулиент: `C:\work\.toolchains\rust\bin` (rustc 1.98.1)
 - ВНИМАНИЕ: `RUSTUP_HOME` и `CARGO_HOME` не унаследуются в новой сессии — сборка падает
   с «could not create home directory: ~/.rustup». Перед сборкой экспортировать:
