@@ -1,9 +1,10 @@
 # STATE — Operational Memory
 
 ## Current Task
-Release v2.1.0: bump версии (Cargo.toml/README/Cargo.lock), коммит `chore: bump version to 2.1.0, update contract`, тег `v2.1.0` + push, проверка GitHub Release от CI. v2.1 Polish (template system + session history log) полностью завершён.
+Спринт v2.1 завершён: релиз v2.1.0 опубликован, CI зелёный, dogfooding выполнен. Следующие пункты — по согласованию (см. docs/ROADMAP.md).
 
 ## Just Done
+- [x] Release v2.1.0: коммит `chore: bump version to 2.1.0, update contract` (a764495: Cargo.toml 2.1.0 + Cargo.lock + README `governor 2.1.0` + подписанный контракт) → тег `v2.1.0` → GitHub Release (zip 551 KB + .sha256); оба CI-прогона зелёные (main и тег); release-бинарник проверен: `governor --version` → 2.1.0
 - [x] Dogfooding (v2.1): контракт IMPLEMENTATION.md обновлён руками (`1 MB` → `1.5 MB` в 3 местах, старый хэш-маркер удалён); `governor close` переподписал контракт → статус **Warning** («подписан при закрытии»); затем полный цикл `start`+`close` → **Success** с новым хэшем контракта (b99a5f80…); `governor history` показывает обе записи (Warning + Success). Нюанс: повторная подпись подписанного файла даёт хэш контента без хвостового `\n` — контракт самосогласован, validation OK
 - [x] Session history log (v2.1): модуль `src/history.rs` — append-only JSONL `.governor/history.jsonl`; `governor start` пишет событие start (ts, PID, host, SHA-256 контракта), `governor close` — close со статусом Success (контракт валиден/отсутствует) / Warning (подписан при закрытии) / Fail (hash mismatch); `session::close_session` возвращает `CloseOutcome{ContractCheck}`; новая команда `governor history [project] [--limit N]` (default 10) — таблица Дата/Start/Длительность/Статус/Hash (сокращён до 8 hex); открытая сессия → Active, orphan close сохраняется; нет истории → "No session history found for this project", битая строка → ошибка с путём и номером строки; chrono + feature "serde"; 14 unit-тестов history + 2 CLI-теста (163 unit + 25 integration = 188); README: таблица команд + Session lifecycle; бинарник 1068 KB (< 1.5 MB); запись истории best-effort (ошибка не валит сессию)
 - [x] Бюджет бинарника повышен до 1.5 MB: ADR-008 (docs/DECISIONS.md) — секция Size budget с историей повышений (700 KB → 1 MB → 1.5 MB), README `< 1.5 MB`; коммит `docs: raise binary size budget to 1.5 MB`
