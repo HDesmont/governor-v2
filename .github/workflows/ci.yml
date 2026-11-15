@@ -33,3 +33,24 @@ jobs:
 
       - name: release build
         run: cargo build --release
+
+  # Stretch: same checks on Linux. Clipboard-backed checks degrade to
+  # Warn/Fail statuses when no display server is present, and every
+  # clipboard-touching test accepts any status, so a headless runner
+  # must stay green. If this job ever turns red, drop it again.
+  test-linux:
+    name: test (ubuntu, stretch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (pinned to match local dev)
+        uses: dtolnay/rust-toolchain@1.98.1
+
+      - name: Cache cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: test
+        run: cargo test
+
