@@ -49,7 +49,9 @@ Governor assumes the AI is a brilliant but unreliable collaborator. So:
 
 ```bash
 # 1. Scaffold a project (creates STATE.md + IMPLEMENTATION.md templates)
-governor init
+governor init                 # default template
+governor init -t rust         # built-in template for Rust projects
+governor init --template team # custom template from ~/.governor/templates/team/
 
 # 2. Start a session
 governor start              # interactive TUI project selector
@@ -97,7 +99,7 @@ cargo build --release
 
 | Command | Description |
 |---|---|
-| `governor init [--force]` | Scaffold `STATE.md` + `IMPLEMENTATION.md` in the current directory. Existing files are never overwritten without `--force`. |
+| `governor init [--template <name>] [--force]` | Scaffold `STATE.md` + `IMPLEMENTATION.md` in the current directory from a template (see [Templates](#templates)). Existing files are never overwritten without `--force`. Omitting `--template` uses `default`. |
 | `governor start [project]` | Discover the project, assemble AI context, copy it to the clipboard, and hold a session lock. Without a name, opens the interactive TUI selector. |
 | `governor close [project]` | Validate and close the active session; copies a verification context to the clipboard. |
 | `governor health [project] [--verbose]` | Run workspace health checks (clipboard, filesystem, contract integrity, locks). **Exits 1 if any check fails (❌), 0 on pass/warn only** — safe to use in CI and scripts. |
@@ -129,6 +131,56 @@ backend = "auto"                     # arboard-backed, no external processes
 ```
 
 See `governor config --show` for the full annotated template.
+
+---
+
+## Templates
+
+`governor init` scaffolds `STATE.md` + `IMPLEMENTATION.md` from a template:
+
+```bash
+governor init                # default template (backward compatible)
+governor init -t minimal     # short form
+governor init --template rust
+```
+
+### Built-in templates
+
+| Name | Scope |
+|---|---|
+| `default` | Balanced starter: task, progress, context, notes + full contract. |
+| `minimal` | Bare minimum: current task and progress checklist only. |
+| `rust` | Rust projects: build/clippy/test checks, Cargo layout, `src/` structure. |
+| `frontend` | Frontend projects: npm scripts, components, styling. |
+
+### Custom templates
+
+Any name not built-in is looked up in `~/.governor/templates/<name>/`:
+
+```
+~/.governor/templates/
+└── team/
+    ├── STATE.md            # required
+    └── IMPLEMENTATION.md   # required
+```
+
+A custom template is valid when the directory contains **both** files; they
+become the scaffold content verbatim. Names may contain ASCII letters,
+digits, `-` and `_`. The templates root can be relocated with the
+`GOVERNOR_TEMPLATES_DIR` environment variable.
+
+An unknown template name fails with the list of everything actually
+available (built-ins plus valid custom templates):
+
+```
+❌ Error: unknown template 'blog'.
+Available templates:
+  - default    Balanced starter: task, progress, context, notes + full contract
+  - minimal    Bare minimum: current task and progress checklist only
+  - rust       Rust projects: build/clippy/test checks, Cargo layout, src/ structure
+  - frontend   Frontend projects: npm scripts, components, styling
+  - team       (custom, from C:\Users\me\.governor\templates\team)
+```
 
 ---
 

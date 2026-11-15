@@ -1,9 +1,10 @@
 # STATE — Operational Memory
 
 ## Current Task
-v2.1 Polish: template system для STATE.md/IMPLEMENTATION.md scaffolding, session history log (config и completions уже сделаны).
+v2.1 Polish: session history log (template system сделан; config и completions уже сделаны).
 
 ## Just Done
+- [x] Template system (v2.1): `governor init --template <name>` / `-t`; 4 built-in (default/minimal/rust/frontend); custom из `~/.governor/templates/<name>/{STATE.md,IMPLEMENTATION.md}`; unknown → ошибка со списком доступных (built-in + валидные custom); имя шаблона — только [A-Za-z0-9_-] (path traversal отсечён); env-хук `GOVERNOR_TEMPLATES_DIR` для тестов/переноса корня; без флага — default (обратная совместимость, старые `init_project`/`init_in_dir` сохранены); 14 новых unit + 3 CLI-теста; README: секция Templates; бинарник 1017 KB (+8.7 KB от шаблонов)
 - [x] MVP released: тег `v2.0.0` → GitHub Release с `governor-x86_64-pc-windows-msvc.zip` + `.sha256` (прогон 43721042465 — все 3 джобы зелёные); E2E-тест one-liner `iwr -useb .../install.ps1 | iex` на чистой машине (Windows 11, PowerShell) пройден: SHA-256 verified, PATH обновлён, в новом терминале `governor --version` → 2.0.0 и `--help` показывает все команды
 - [x] CI зелёный: https://github.com/HDesmont/governor-v2/actions — `clippy + test (windows)` ✅ и stretch-джоба `test (ubuntu)` ✅ (прогон 43717616662, b0f41f8)
 - [x] Фикс гонки lock (упал на CI): удаление lock-файла между `exists()` и чтением отдавало `IoError(NotFound)` и валило `acquire_with_timeout` → `remove_if_exists` трактует NotFound как «лок свободен»
@@ -35,6 +36,7 @@ v2.1 Polish: template system для STATE.md/IMPLEMENTATION.md scaffolding, sess
 - [x] README.md: описание, установка, команды, архитектура
 - [x] CI (GitHub Actions): push/PR в main, windows-latest (clippy -D warnings, cargo test, release build) + ubuntu-latest stretch (cargo test) — обе джобы зелёные; бейдж в README
 - [x] Packaging: `install.ps1` — установка в `%LOCALAPPDATA%\Governor\bin`, идемпотентный user-PATH (raw-чтение, REG_EXPAND_SZ), `-Uninstall`, `-Local`, `-Version`; CI-джоба `release` на тегах `v*` публикует zip + `.sha256`; README: Windows installation one-liner
+- [x] Template system: `init --template/-t` — 4 built-in + custom из `~/.governor/templates/<name>/`; понятная ошибка unknown со списком; 172 теста (147 unit + 25 integration); бинарник 1017 KB (< 1 MB, запас 7 KB)
 
 ## Context
 - Проект: Governor v2.0 — AI-ассистированное управление разработкой
@@ -69,3 +71,9 @@ v2.1 Polish: template system для STATE.md/IMPLEMENTATION.md scaffolding, sess
 - Гонка acquire/wait найдена на CI (`lock::tests::acquire_with_timeout_succeeds_when_lock_released`):
   удаление lock-файла между `exists()` и `read_to_string` отдавало `IoError(NotFound)` и валило ожидание.
   Исправлено: `remove_if_exists` (NotFound = лок свободен), тайминговые границы теста ослаблены для нагруженных раннеров
+- Бинарник после template system: 1 041 408 байт (1017.0 KB) — на HEAD (без правок) было 1 032 704 (1008.5 KB);
+  цифра 851 KB в старых записях устарела. Запас до бюджета 1 MB всего 7 KB — следующая фича может его пробить
+- Template system: корень кастомных — `dirs::home_dir()/.governor/templates`, переопределяется env `GOVERNOR_TEMPLATES_DIR`
+  (тот же паттерн, что `GOVERNOR_CONFIG` в config.rs; в тестах — мьютекс-фикстура, env снимается в Drop);
+  имена кастомных валидируются `[A-Za-z0-9_-]` до любого обращения к FS; в списке available кастомные
+  показываются только если директория содержит ОБА файла (для вывода ошибки шаблон не читается, только is_file-проверки)

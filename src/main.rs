@@ -30,7 +30,7 @@ fn main() {
         cli::Command::Close { project } => cmd_close(project.as_deref()),
         cli::Command::Health { project, verbose } => cmd_health(project.as_deref(), verbose),
         cli::Command::Relay { preset, hud } => cmd_relay(preset.as_deref(), hud),
-        cli::Command::Init { force } => cmd_init(force),
+        cli::Command::Init { force, template } => cmd_init(force, template.as_deref()),
         cli::Command::Config { show, validate, check_root } => cmd_config(show, validate.as_deref(), check_root),
         cli::Command::Completions { shell } => cmd_completions(&shell),
         cli::Command::Projects { verbose } => cmd_projects(verbose),
@@ -305,9 +305,12 @@ fn cmd_completions(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// `governor init`
-fn cmd_init(force: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let result = init::init_project(force)?;
+/// `governor init [--template <name>]`
+///
+/// No `--template` means the default template (backward compatible).
+fn cmd_init(force: bool, template: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let template_name = template.unwrap_or(init::DEFAULT_TEMPLATE_NAME);
+    let result = init::init_project_with(force, template_name)?;
     init::print_result(&result);
     Ok(())
 }

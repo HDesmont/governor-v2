@@ -73,6 +73,11 @@ pub enum Command {
         /// Overwrite existing STATE.md / IMPLEMENTATION.md.
         #[arg(short, long, default_value = "false")]
         force: bool,
+        /// Template for STATE.md / IMPLEMENTATION.md: a built-in name
+        /// (default, minimal, rust, frontend) or a custom template from
+        /// ~/.governor/templates/<name>/. Omit for the default template.
+        #[arg(short, long)]
+        template: Option<String>,
     },
 
     /// Show or validate configuration.
@@ -157,5 +162,47 @@ mod tests {
         let err = Cli::try_parse_from(["governor", "config", "--show", "--check-root"])
             .expect_err("must be rejected");
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn init_defaults_to_no_template_and_no_force() {
+        let cli = Cli::try_parse_from(["governor", "init"]).expect("must parse");
+        match cli.command {
+            Command::Init { force, template } => {
+                assert!(!force);
+                assert_eq!(template, None, "no flag → default template (backward compat)");
+            }
+            other => panic!("expected Init, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn init_accepts_template_short_and_long() {
+        for argv in [
+            vec!["governor", "init", "-t", "rust"],
+            vec!["governor", "init", "--template", "rust"],
+        ] {
+            let cli = Cli::try_parse_from(argv).expect("must parse");
+            match cli.command {
+                Command::Init { force, template } => {
+                    assert!(!force);
+                    assert_eq!(template.as_deref(), Some("rust"));
+                }
+                other => panic!("expected Init, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn init_combines_force_and_template() {
+        let cli = Cli::try_parse_from(["governor", "init", "--force", "-t", "minimal"])
+            .expect("must parse");
+        match cli.command {
+            Command::Init { force, template } => {
+                assert!(force);
+                assert_eq!(template.as_deref(), Some("minimal"));
+            }
+            other => panic!("expected Init, got {other:?}"),
+        }
     }
 }
