@@ -1,0 +1,25 @@
+# Rust build artifacts
+/target/
+
+# Governor runtime state (locks, logs, sessions, evidence)
+/.governor/
+
+# Local environment / secrets
+.env
+.env.*
+*.local.toml
+
+# Editor / IDE
+/.vscode/
+/.idea/
+*.swp
+*.swo
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temp files
+*.tmp
+*.bak
