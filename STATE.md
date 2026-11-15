@@ -1,10 +1,10 @@
 # STATE — Operational Memory
 
 ## Current Task
-Первый релиз: запушить тег `v2.0.0` → release-джоба соберёт и приложит ZIP; дальше — v2.1 Polish.
+v2.1 Polish: template system для STATE.md/IMPLEMENTATION.md scaffolding, session history log (config и completions уже сделаны).
 
 ## Just Done
-- [x] Packaging: `install.ps1` (корень репо) — установка в `%LOCALAPPDATA%\Governor\bin`, идемпотентный user-PATH, `-Uninstall`, `-Local`/`-LocalPath`, `-Version`; CI-джоба `release` на тегах `v*` публикует `governor-x86_64-pc-windows-msvc.zip` + `.sha256`; README: раздел Windows installation (one-liner `iwr -useb ... | iex`)
+- [x] MVP released: тег `v2.0.0` → GitHub Release с `governor-x86_64-pc-windows-msvc.zip` + `.sha256` (прогон 43721042465 — все 3 джобы зелёные); E2E-тест one-liner `iwr -useb .../install.ps1 | iex` на чистой машине (Windows 11, PowerShell) пройден: SHA-256 verified, PATH обновлён, в новом терминале `governor --version` → 2.0.0 и `--help` показывает все команды
 - [x] CI зелёный: https://github.com/HDesmont/governor-v2/actions — `clippy + test (windows)` ✅ и stretch-джоба `test (ubuntu)` ✅ (прогон 43717616662, b0f41f8)
 - [x] Фикс гонки lock (упал на CI): удаление lock-файла между `exists()` и чтением отдавало `IoError(NotFound)` и валило `acquire_with_timeout` → `remove_if_exists` трактует NotFound как «лок свободен»
 - [x] Портабельные config-фикстуры (упали на ubuntu): `env::split_paths` на Unix режет пути по `:` → Windows-пути `C:/x` в env-тестах заменены на бесколонные
@@ -34,6 +34,7 @@
 - [x] Health exit-code контракт: `has_failures()` (Fail → 1, Warn/Pass → 0) + интеграционные тесты на tampered/unsigned контракт через реальный бинарник
 - [x] README.md: описание, установка, команды, архитектура
 - [x] CI (GitHub Actions): push/PR в main, windows-latest (clippy -D warnings, cargo test, release build) + ubuntu-latest stretch (cargo test) — обе джобы зелёные; бейдж в README
+- [x] Packaging: `install.ps1` — установка в `%LOCALAPPDATA%\Governor\bin`, идемпотентный user-PATH (raw-чтение, REG_EXPAND_SZ), `-Uninstall`, `-Local`, `-Version`; CI-джоба `release` на тегах `v*` публикует zip + `.sha256`; README: Windows installation one-liner
 
 ## Context
 - Проект: Governor v2.0 — AI-ассистированное управление разработкой
