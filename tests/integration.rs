@@ -479,6 +479,41 @@ fn test_health_exit_code_one_on_failed_check() {
     assert!(stdout.contains("failures"), "summary must count failures: {stdout}");
 }
 
+/// `governor health --verbose` keeps the same exit-code contract: extended
+/// diagnostics (clipboard throughput, relay sanity, ...) must not mask a hard
+/// failure — a tampered contract still fails the process with exit 1.
+#[test]
+fn test_health_verbose_exit_code_one_on_failed_check() {
+    use governor::integrity;
+
+    let dir = tempfile::tempdir().unwrap();
+    let project = write_health_project(dir.path());
+    let impl_path = project.join("IMPLEMENTATION.md");
+
+    integrity::sign_contract(&impl_path).unwrap();
+    let signed = fs::read_to_string(&impl_path).unwrap();
+    fs::write(&impl_path, signed.replace("Work as planned", "Work differently")).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_governor"))
+        .args(["health", "--verbose", "health-e2e"])
+        .current_dir(&project)
+        // An explicit-but-absent config keeps discovery from seeing anything
+        // but the current directory, exercising the CWD fallback.
+        .env("GOVERNOR_CONFIG", project.join("absent-config.toml"))
+        .output()
+        .expect("governor binary must be runnable in tests");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "--verbose must not mask a ❌ Fail check. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Contract Integrity"), "{stdout}");
+    assert!(stdout.contains("hash mismatch"), "failure must say why: {stdout}");
+}
+
 #[test]
 fn test_health_exit_code_zero_with_warnings_only() {
     let dir = tempfile::tempdir().unwrap();

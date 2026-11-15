@@ -1,5 +1,7 @@
 # Governor v2
 
+[![CI](https://github.com/HDesmont/governor-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/HDesmont/governor-v2/actions/workflows/ci.yml)
+
 **AI-assisted development governance** — a single-binary Rust tool that gives
 AI coding agents a controlled, verifiable workflow: structured project state,
 tamper-evident contracts, and a clipboard-based transport that works with *any*

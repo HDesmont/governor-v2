@@ -1,7 +1,12 @@
 # STATE — Operational Memory
 
 ## Current Task
-Пункт 5.3 плана v2.1 (Project-discovery parallelism) — **DONE**: параллельное сканирование workspace roots через пул потоков (`src/pool.rs`). Перейти к третьему пункту плана (Relay daemon enhancements) / секции 6 (Packaging).
+Настроить CI (GitHub Actions, `.github/workflows/ci.yml`: clippy -D warnings + cargo test на windows-latest), затем — Packaging (install.ps1 / .msi).
+
+## Just Done
+- [x] Exit-code фикс: `governor health` → Fail = exit 1, Warn/Pass = exit 0 (`has_failures` + `process::exit(1)` в `cmd_health`); unit- и integration-тесты на контракт
+- [x] README.md добавлен (+ бейдж CI)
+- [x] CI: `.github/workflows/ci.yml` — windows-latest, dtolnay/rust-toolchain@1.98.1 (пин = локальный тулчейн, rust-toolchain.toml не добавлен), clippy -D warnings + cargo test + release build; fmt-гейт не добавлен (rustfmt не установлен в кастомном тулчейне — осмысленный diff проверить негде)
 
 ## Progress
 - [x] Ядро v2.0: 10 модулей на Rust (cli, project, lock, integrity, context, clipboard, session, tui, health, relay)
@@ -21,7 +26,9 @@
 - [x] Бинарный размер: 771 KB (< 1 MB, бюджет увеличен для v2.1)
 - [x] Health‑check improvements: clipboard throughput, FS saturation, clock skew, relay sanity test — реализованы, gated behind `--verbose`, unit‑тесты добавлены
 - [x] Project‑discovery parallelism (5.3): `src/pool.rs` — пул потоков на std (без новых зависимостей, ≤8 воркеров), roots сканируются конкурентно; вывод побайтово совпадает с последовательным сканированием
-- [x] 142 теста (123 unit + 19 integration) — проходят; релизный бинарник 851 KB (< 1 MB)
+- [x] 158 тестов (133 unit + 25 integration) — проходят; релизный бинарник 851 KB (< 1 MB)
+- [x] Health exit-code контракт: `has_failures()` (Fail → 1, Warn/Pass → 0) + интеграционные тесты на tampered/unsigned контракт через реальный бинарник
+- [x] README.md: описание, установка, команды, архитектура
 
 ## Context
 - Проект: Governor v2.0 — AI-ассистированное управление разработкой
