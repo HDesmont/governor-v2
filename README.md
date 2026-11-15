@@ -61,7 +61,30 @@ governor start my-project   # or directly, by name
 governor close
 ```
 
-Build from source:
+### Windows installation
+
+One line in PowerShell — downloads the latest release from GitHub Releases,
+installs into `%LOCALAPPDATA%\Governor\bin` and adds it to the user `PATH`:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/HDesmont/governor-v2/main/install.ps1 | iex
+```
+
+Open a new terminal and run `governor --version`. The installer is
+idempotent — re-running it never duplicates the `PATH` entry. Uninstall:
+
+```powershell
+iex "& { $(iwr -useb https://raw.githubusercontent.com/HDesmont/governor-v2/main/install.ps1).Content } -Uninstall"
+```
+
+Install from a local build instead of a release download:
+
+```powershell
+cargo build --release
+.\install.ps1 -Local
+```
+
+Build from source (Linux / macOS):
 
 ```bash
 cargo build --release

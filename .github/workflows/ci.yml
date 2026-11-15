@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -53,4 +54,43 @@ jobs:
 
       - name: test
         run: cargo test
+
+  # Packaging: on a v* tag, build the release binary and publish a GitHub
+  # Release with governor-x86_64-pc-windows-msvc.zip (+ .sha256 sidecar).
+  # install.ps1 (repo root) downloads exactly this asset - keep it in sync.
+  # Gated on the test job so a broken tag never publishes.
+  release:
+    name: release (windows)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (pinned to match local dev)
+        uses: dtolnay/rust-toolchain@1.98.1
+
+      - name: Cache cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: release build
+        run: cargo build --release
+
+      - name: Package (zip + sha256)
+        run: |
+          $zip = "governor-x86_64-pc-windows-msvc.zip"
+          Compress-Archive -Path target/release/governor.exe -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
+          Get-ChildItem "$zip*" | ForEach-Object { "{0}: {1} bytes" -f $_.Name, $_.Length }
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            governor-x86_64-pc-windows-msvc.zip
+            governor-x86_64-pc-windows-msvc.zip.sha256
 
